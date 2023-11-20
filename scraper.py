@@ -34,8 +34,8 @@ def create_logger(
 
 
 class Scraper:
-    start_url = "https://www.poesie-francaise.fr/poemes-"
-    authors_url = "https://www.poesie-francaise.fr/poemes-auteurs/"
+    poem_root_url = "https://www.poesie-francaise.fr/poemes-"
+    poet_root_url = "https://www.poesie-francaise.fr/poemes-auteurs/"
 
     def __init__(self, duckdb_file_path=None, log_level="INFO"):
         self.logger = create_logger(log_level=log_level)
@@ -59,7 +59,7 @@ class Scraper:
         poet_dods = []
 
         # Parse the HTML using BeautifulSoup
-        response = requests.get(self.authors_url)
+        response = requests.get(self.poet_root_url)
         html_content = response.text
         soup = BeautifulSoup(html_content, "html.parser")
 
@@ -114,8 +114,59 @@ class Scraper:
             f"{'fetch_poets':30s} - Elapsed time (s) : {elapsed_time_s_step:10.3f}"
         )
 
+    def fetch_poems(self):
+        self.logger.info("**** fetch poems ****")
+        start_time_step = time.perf_counter()
+
+        sql = "SELECT poet_slug FROM poets"
+        poet_slugs = pd.read_sql(sql=sql, con=self.engine).poet_slug
+        for poet_slug in poet_slugs.values:
+            self.logger.info(f"poet slug : {poet_slug}")
+            poet_root_url = self.poem_root_url + poet_slug
+            response = requests.get(poet_root_url)
+            poet_html_content = response.text
+
+            # Parse the HTML using re
+            pattern = rf'<a\s+href="(https://www\.poesie-francaise\.fr/{poet_slug}/poeme-.*?\.php)"\s*>'
+            matches = re.findall(pattern, poet_html_content)
+
+            for poem_root_url in matches:
+                response = requests.get(poem_root_url)
+                poem_html_content = response.text
+
+                # title
+                title_pattern = r"<h2>Titre : (.*?)</h2>"
+                title_matches = re.findall(title_pattern, poem_html_content, re.DOTALL)
+                if len(title_matches) > 1:
+                    self.logger.error("found for than one title for a single poem")
+                poem_title = title_matches[0].strip()
+                self.logger.info(f"poem title : {poem_title}")
+
+                # poet name
+                poet_pattern = r'<h3>Poète : <a href=".*?">(.*?)</a>'
+                poet_matches = re.findall(poet_pattern, poem_html_content, re.DOTALL)
+                if len(poet_matches) > 1:
+                    self.logger.error("found for than one poet name for a single poem")
+                poet_name = poet_matches[0].strip()
+                self.logger.info(f"poet name : {poet_name}")
+
+                # book
+                book_pattern = r'Recueil : <a href=".*?">(.*?)</a>'
+                book_matches = re.findall(book_pattern, poem_html_content, re.DOTALL)
+                if len(book_matches) > 1:
+                    self.logger.error("found for than one book for a single poem")
+                poem_book = book_matches[0].strip()
+                self.logger.info(f"poem book : {poem_book}")
+
+                break
+
+        elapsed_time_s_step = time.perf_counter() - start_time_step
+        self.logger.info(
+            f"{'fetch_poems':30s} - Elapsed time (s) : {elapsed_time_s_step:10.3f}"
+        )
+
 
 if __name__ == "__main__":
     scraper = Scraper()
-    scraper.fetch_poets()
+    # scraper.fetch_poets()
     scraper.fetch_poems()
