@@ -1,0 +1,7 @@
+loguru
+requests
+beautifulsoup4
+pandas
+duckdb
+sqlalchemy
+duckdb-engine
