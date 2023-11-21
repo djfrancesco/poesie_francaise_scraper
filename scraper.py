@@ -138,7 +138,7 @@ class Scraper:
             poet_html_content = response.text
 
             # Parse the HTML using re
-            pattern = rf'<a\s+href="(https://www\.poesie-francaise\.fr/{poet_slug}/poeme-.*?\.php)"\s*>'
+            pattern = rf'<a\s+href="(https://www\.poesie-francaise\.fr/{poet_slug}/(?:poeme|fable)-.*?\.php)"\s*>'
             matches = re.findall(pattern, poet_html_content)
 
             # loop on poems
@@ -221,7 +221,7 @@ class Scraper:
                 poem_text = poem_text.replace(" ;", ";")
 
                 # Replace multiple consecutive blank lines with a single one
-                poem_text = re.sub(r'\n\s*\n', '\n\n', poem_text)
+                poem_text = re.sub(r"\n\s*\n", "\n\n", poem_text)
 
                 poem_texts.append(poem_text)
 
