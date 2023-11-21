@@ -45,7 +45,7 @@ class Scraper:
             self.duckdb_file_path = os.path.join(os.getcwd(), "poesie_francaise.duckdb")
         else:
             self.duckdb_file_path = duckdb_file_path
-        self.engine = create_engine("duckdb:///{self.duckdb_file_path}")
+        self.engine = create_engine(f"duckdb:///{self.duckdb_file_path}")
         self.logger.info(f"DuckDB file : {self.duckdb_file_path}")
 
     def fetch_poets(self):
