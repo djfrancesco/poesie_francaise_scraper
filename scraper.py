@@ -222,11 +222,8 @@ class Scraper:
                 poem_text = poem_text.replace("<br/>", "\n")
                 poem_text = poem_text.replace(" ;", ";")
 
-                # Split the text into lines and filter out empty lines
-                lines = [line for line in poem_text.splitlines() if line.strip()]
-
-                # Join the non-empty lines back together
-                poem_text = "\n".join(lines)
+                # Replace multiple consecutive blank lines with a single one
+                poem_text = re.sub(r'\n\s*\n', '\n\n', poem_text)
 
                 poem_texts.append(poem_text)
 
