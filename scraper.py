@@ -120,9 +120,9 @@ class Scraper:
 
         # init
         poet_slugs = []
-        poem_titles = []
         poet_names = []
         poem_books = []
+        poem_titles = []
         poem_texts = []
         if_exists = "replace"
 
@@ -143,6 +143,8 @@ class Scraper:
 
             # loop on poems
             for j, poem_root_url in enumerate(matches):
+                poem_count += 1
+
                 response = requests.get(poem_root_url)
                 poem_html_content = response.text
 
@@ -230,30 +232,48 @@ class Scraper:
                         list(
                             zip(
                                 poet_slugs,
-                                poem_titles,
                                 poet_names,
                                 poem_books,
+                                poem_titles,
                                 poem_texts,
                             )
                         ),
-                        columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
+                        columns=[
+                            "poet_slug",
+                            "poet_name",
+                            "poem_book",
+                            "poem_title",
+                            "poem_text",
+                        ],
                     )
                     poems.to_sql(
                         name="poems", con=self.engine, if_exists=if_exists, index=False
                     )
                     poet_slugs = []
-                    poem_titles = []
                     poet_names = []
                     poem_books = []
+                    poem_titles = []
                     poem_texts = []
                     if_exists = "append"
 
-                poem_count += 1
-
         if len(poet_slugs) > 0:
             poems = pd.DataFrame(
-                list(zip(poet_slugs, poem_titles, poet_names, poem_books, poem_texts)),
-                columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
+                list(
+                    zip(
+                        poet_slugs,
+                        poet_names,
+                        poem_books,
+                        poem_titles,
+                        poem_texts,
+                    )
+                ),
+                columns=[
+                    "poet_slug",
+                    "poet_name",
+                    "poem_book",
+                    "poem_title",
+                    "poem_text",
+                ],
             )
             poems.to_sql(
                 name="poems", con=self.engine, if_exists=if_exists, index=False
@@ -267,5 +287,5 @@ class Scraper:
 
 if __name__ == "__main__":
     scraper = Scraper()
-    # scraper.fetch_poets()
+    scraper.fetch_poets()
     scraper.fetch_poems()
