@@ -118,9 +118,18 @@ class Scraper:
         self.logger.info("**** fetch poems ****")
         start_time_step = time.perf_counter()
 
+        # init
+        poet_slugs = []
+        poem_titles = []
+        poet_names = []
+        poem_books = []
+        poem_texts = []
+
         sql = "SELECT poet_slug FROM poets"
-        poet_slugs = pd.read_sql(sql=sql, con=self.engine).poet_slug
-        for poet_slug in poet_slugs.values:
+        poet_slugs_series = pd.read_sql(sql=sql, con=self.engine).poet_slug
+
+        # loop on poet slugs
+        for i, poet_slug in enumerate(poet_slugs_series.values):
             self.logger.info(f"poet slug : {poet_slug}")
             poet_root_url = self.poem_root_url + poet_slug
             response = requests.get(poet_root_url)
@@ -130,35 +139,100 @@ class Scraper:
             pattern = rf'<a\s+href="(https://www\.poesie-francaise\.fr/{poet_slug}/poeme-.*?\.php)"\s*>'
             matches = re.findall(pattern, poet_html_content)
 
-            for poem_root_url in matches:
+            # loop on poems
+            for j, poem_root_url in enumerate(matches):
                 response = requests.get(poem_root_url)
                 poem_html_content = response.text
 
-                # title
+                poet_slugs.append(poet_slug)
+
+                # poem title
+                # ----------
+
                 title_pattern = r"<h2>Titre : (.*?)</h2>"
                 title_matches = re.findall(title_pattern, poem_html_content, re.DOTALL)
                 if len(title_matches) > 1:
-                    self.logger.error("found for than one title for a single poem")
+                    self.logger.error("found more that one title for a single enrty")
                 poem_title = title_matches[0].strip()
-                self.logger.info(f"poem title : {poem_title}")
+                poem_titles.append(poem_title)
 
                 # poet name
+                # ---------
+
                 poet_pattern = r'<h3>Poète : <a href=".*?">(.*?)</a>'
                 poet_matches = re.findall(poet_pattern, poem_html_content, re.DOTALL)
                 if len(poet_matches) > 1:
-                    self.logger.error("found for than one poet name for a single poem")
+                    self.logger.error(
+                        "found more than one poet name for a single entry"
+                    )
                 poet_name = poet_matches[0].strip()
-                self.logger.info(f"poet name : {poet_name}")
+                poet_names.append(poem_title)
 
-                # book
+                # poem book
+                # ---------
+
                 book_pattern = r'Recueil : <a href=".*?">(.*?)</a>'
                 book_matches = re.findall(book_pattern, poem_html_content, re.DOTALL)
                 if len(book_matches) > 1:
-                    self.logger.error("found for than one book for a single poem")
-                poem_book = book_matches[0].strip()
-                self.logger.info(f"poem book : {poem_book}")
+                    self.logger.error("found more than one book for a single entry")
+                try:
+                    poem_book = book_matches[0].strip()
+                except Exception as _:
+                    book_pattern = r'<div class="w3-margin-bottom">Recueil : (.*?).</p>'
+                    book_matches = re.findall(
+                        book_pattern, poem_html_content, re.DOTALL
+                    )
+                    if len(book_matches) > 1:
+                        self.logger.error("found more than one book for a single entry")
+                    poem_book = book_matches[0].strip()
+                self.logger.info(f"{poet_slug}-{poet_name}/{poem_book}/{poem_title}")
+                poem_books.append(poem_book)
 
-                break
+                # poem text
+                # ---------
+
+                poem_pattern = rf'<p>(.*?)</p>\n<a href="https://www.poesie-francaise.fr/poemes-{poet_slug}/">{poet_name}</a>'
+                poem_matches = re.findall(poem_pattern, poem_html_content, re.DOTALL)
+                if len(poem_matches) > 1:
+                    self.logger.error("found more than one poem for a single entry")
+                poem_text = poem_matches[0].strip()
+
+                # Parse the HTML using BeautifulSoup
+                poem_soup = BeautifulSoup(poem_text, "html.parser")
+
+                # Find all <span> elements with class attributes starting with "decalage"
+                spans_to_replace = poem_soup.find_all(
+                    "span", class_=re.compile(r"decalage\d+")
+                )
+
+                # Replace each <span> element with the corresponding number of spaces
+                for span in spans_to_replace:
+                    # Extract the number of spaces from the class name using regular expression
+                    match = re.search(r"decalage(\d+)", span["class"][0])
+
+                    if match:
+                        spaces = int(match.group(1))
+                        replacement = poem_soup.new_string(" " * spaces)
+                        span.replace_with(replacement)
+
+                poem_text = str(poem_soup)
+                poem_text = poem_text.replace("<br />", "\n")
+                poem_text = poem_text.replace("<br/>", "\n")
+                poem_text = poem_text.replace(" ;", ";")
+
+                # Split the text into lines and filter out empty lines
+                lines = [line for line in poem_text.splitlines() if line.strip()]
+
+                # Join the non-empty lines back together
+                poem_text = "\n".join(lines)
+
+                poem_texts.append(poem_text)
+
+        poems = pd.DataFrame(
+            list(zip(poet_slugs, poem_titles, poet_names, poem_books, poem_texts)),
+            columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
+        )
+        poems.to_sql(name="poems", con=self.engine, if_exists="replace", index=False)
 
         elapsed_time_s_step = time.perf_counter() - start_time_step
         self.logger.info(
