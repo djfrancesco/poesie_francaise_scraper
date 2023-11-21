@@ -114,7 +114,7 @@ class Scraper:
             f"{'fetch_poets':30s} - Elapsed time (s) : {elapsed_time_s_step:10.3f}"
         )
 
-    def fetch_poems(self):
+    def fetch_poems(self, chunk_size=100):
         self.logger.info("**** fetch poems ****")
         start_time_step = time.perf_counter()
 
@@ -129,6 +129,7 @@ class Scraper:
         poet_slugs_series = pd.read_sql(sql=sql, con=self.engine).poet_slug
 
         # loop on poet slugs
+        poem_count = 0
         for i, poet_slug in enumerate(poet_slugs_series.values):
             self.logger.info(f"poet slug : {poet_slug}")
             poet_root_url = self.poem_root_url + poet_slug
@@ -228,11 +229,38 @@ class Scraper:
 
                 poem_texts.append(poem_text)
 
-        poems = pd.DataFrame(
-            list(zip(poet_slugs, poem_titles, poet_names, poem_books, poem_texts)),
-            columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
-        )
-        poems.to_sql(name="poems", con=self.engine, if_exists="replace", index=False)
+                if poem_count % chunk_size == 0:
+                    poems = pd.DataFrame(
+                        list(
+                            zip(
+                                poet_slugs,
+                                poem_titles,
+                                poet_names,
+                                poem_books,
+                                poem_texts,
+                            )
+                        ),
+                        columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
+                    )
+                    poems.to_sql(
+                        name="poems", con=self.engine, if_exists="replace", index=False
+                    )
+                    poet_slugs = []
+                    poem_titles = []
+                    poet_names = []
+                    poem_books = []
+                    poem_texts = []
+
+                poem_count += 1
+
+        if len(poet_slugs) > 0:
+            poems = pd.DataFrame(
+                list(zip(poet_slugs, poem_titles, poet_names, poem_books, poem_texts)),
+                columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
+            )
+            poems.to_sql(
+                name="poems", con=self.engine, if_exists="replace", index=False
+            )
 
         elapsed_time_s_step = time.perf_counter() - start_time_step
         self.logger.info(
