@@ -195,8 +195,6 @@ class Scraper:
 
                 poem_pattern = rf'<p>(.*?)</p>\n<a href="https://www.poesie-francaise.fr/poemes-{poet_slug}/">{poet_name}</a>'
                 poem_matches = re.findall(poem_pattern, poem_html_content, re.DOTALL)
-                if len(poem_matches) > 1:
-                    self.logger.error("found more than one poem for a single entry")
                 poem_text = poem_matches[0].strip()
 
                 # Parse the HTML using BeautifulSoup
