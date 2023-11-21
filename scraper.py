@@ -124,6 +124,7 @@ class Scraper:
         poet_names = []
         poem_books = []
         poem_texts = []
+        if_exists = "replace"
 
         sql = "SELECT poet_slug FROM poets"
         poet_slugs_series = pd.read_sql(sql=sql, con=self.engine).poet_slug
@@ -243,13 +244,14 @@ class Scraper:
                         columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
                     )
                     poems.to_sql(
-                        name="poems", con=self.engine, if_exists="replace", index=False
+                        name="poems", con=self.engine, if_exists=if_exists, index=False
                     )
                     poet_slugs = []
                     poem_titles = []
                     poet_names = []
                     poem_books = []
                     poem_texts = []
+                    if_exists = "append"
 
                 poem_count += 1
 
@@ -259,7 +261,7 @@ class Scraper:
                 columns=["poet_slug", "poet_name", "poet_dob", "poet_dod"],
             )
             poems.to_sql(
-                name="poems", con=self.engine, if_exists="replace", index=False
+                name="poems", con=self.engine, if_exists=if_exists, index=False
             )
 
         elapsed_time_s_step = time.perf_counter() - start_time_step
