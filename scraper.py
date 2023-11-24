@@ -1,3 +1,32 @@
+"""
+poesie_scraper.py
+
+A web scraper for extracting information about French poets and poems from poesie-francaise.fr.
+
+This script defines a Scraper class that can fetch and store information about French poets and their poems.
+It utilizes web scraping techniques with requests, BeautifulSoup, and regular expressions to extract data
+from the poesie-francaise.fr website.
+
+Dependencies:
+- duckdb_engine: A custom engine for connecting to DuckDB.
+- loguru: A logging library.
+- pandas: A data manipulation library.
+- requests: A library for making HTTP requests.
+- bs4 (BeautifulSoup): A library for web scraping.
+- slugify: A library for creating slugs from text.
+- sqlalchemy: A SQL toolkit and Object-Relational Mapping (ORM) library.
+
+Usage:
+1. Create an instance of the Scraper class.
+2. Call the fetch_all() method to fetch information about poets and poems.
+   The mode parameter can be set to "drop" to drop the existing database or "keep" to keep it.
+
+Example:
+    if __name__ == "__main__":
+        scraper = Scraper()
+        scraper.fetch_all(mode="drop")
+"""
+
 import os
 import re
 import sys
@@ -17,6 +46,16 @@ def create_logger(
     log_name="main",
     log_level="INFO",
 ):
+    """
+    Create and configure a logger.
+
+    Parameters:
+    - log_name (str): The name of the logger.
+    - log_level (str): The logging level (default is "INFO").
+
+    Returns:
+    - logger: The configured logger.
+    """
     fmt = (
         "[<g>{time:YYYY-MM-DD HH:mm:ss.SSSZ}</g> :: <c>{level}</c> ::"
         + " <e>{process.id}</e> :: <y>{process.name}</y>] {message}"
@@ -35,10 +74,26 @@ def create_logger(
 
 
 class Scraper:
+    """
+    A web scraper for extracting information about French poets and poems.
+
+    Attributes:
+    - poem_root_url (str): The root URL for poem pages.
+    - poet_root_url (str): The root URL for poet pages.
+    """
+
     poem_root_url = "https://www.poesie-francaise.fr/poemes-"
     poet_root_url = "https://www.poesie-francaise.fr/poemes-auteurs/"
 
     def __init__(self, duckdb_file_path=None, log_level="INFO"):
+        """
+        Initialize the Scraper instance.
+
+        Parameters:
+        - duckdb_file_path (str, optional): Path to the DuckDB file.
+          Defaults to the current working directory with the file name "poesie_francaise.duckdb".
+        - log_level (str, optional): Logging level (default is "INFO").
+        """
         self.logger = create_logger(log_level=log_level)
         self.logger.info("**** poesie francaise scraper init ****")
         warnings.filterwarnings("ignore", category=DuckDBEngineWarning)
@@ -50,6 +105,14 @@ class Scraper:
         self.logger.info(f"DuckDB file : {self.duckdb_file_path}")
 
     def fetch_poets(self):
+        """
+        Fetch information about French poets and store it in a DataFrame.
+
+        The information includes poet slugs, names, dates of birth, and dates of death.
+
+        Returns:
+        - None
+        """
         self.logger.info("**** fetch poets ****")
         start_time_step = time.perf_counter()
 
@@ -116,6 +179,16 @@ class Scraper:
         )
 
     def _read_poem_count(self, poet_name, html_content):
+        """
+        Read the number of poems by a poet from HTML content.
+
+        Parameters:
+        - poet_name (str): The name of the poet.
+        - html_content (str): HTML content containing information about the poet's works.
+
+        Returns:
+        - int: The number of poems by the poet.
+        """
         # Construct the regex pattern with a capturing group for the integer
         pattern = re.compile(
             rf"<h2>(?:[^\n\d]*(\d+)\s*-\s*)?Les (\d+) (?:poèmes|fables|(?:poèmes\s+et\s+fables)) d[e']?.*?{re.escape(poet_name)}\s*:</h2>",
@@ -134,6 +207,15 @@ class Scraper:
         return poem_count
 
     def _find_next_page_link(self, soup):
+        """
+        Find the link to the next page in a BeautifulSoup object.
+
+        Parameters:
+        - soup (BeautifulSoup): The BeautifulSoup object representing the HTML content.
+
+        Returns:
+        - str or None: The URL of the next page, or None if not found.
+        """
         next_pages_div = soup.find("div", class_="nextpages")
         if next_pages_div:
             next_page_link = next_pages_div.find(
@@ -144,6 +226,17 @@ class Scraper:
         return None
 
     def _fetch_poems(self, html_content, poet_slug, if_exists="append"):
+        """
+        Fetch poems by a specific poet, store it in a DataFrame and write it to DuckDB.
+
+        Parameters:
+        - html_content (str): HTML content containing information about the poet's poems.
+        - poet_slug (str): The slug of the poet.
+        - if_exists (str, optional): If the table already exists, the action to take ("replace" or "append").
+
+        Returns:
+        - int: The number of poems fetched.
+        """
         poet_slugs = []
         poem_titles = []
         poem_slugs = []
@@ -252,6 +345,12 @@ class Scraper:
         return match_count
 
     def fetch_poems(self):
+        """
+        Fetch information about poems by all poets and store it in a DataFrame.
+
+        Returns:
+        - None
+        """
         self.logger.info("**** fetch poems ****")
         start_time_step = time.perf_counter()
 
@@ -311,6 +410,15 @@ class Scraper:
         )
 
     def fetch_all(self, mode="drop"):
+        """
+        Fetch all information about poets and poems.
+
+        Parameters:
+        - mode (str, optional): The mode of operation ("drop" to drop the existing database, or "keep").
+
+        Returns:
+        - None
+        """
         if mode == "drop":
             if os.path.exists(self.duckdb_file_path):
                 os.remove(self.duckdb_file_path)
