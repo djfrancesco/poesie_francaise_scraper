@@ -5,3 +5,4 @@ pandas
 duckdb
 sqlalchemy
 duckdb-engine
+python-slugify
