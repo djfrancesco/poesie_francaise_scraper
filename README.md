@@ -19,7 +19,7 @@ scraper = Scraper(duckdb_file_path=None)
 scraper.fetch_all()
 ```
 
-If `duckdb_file_path` is `None`, a file named `poesie_francaise.duckdb` is created in the current working directory.
+If `duckdb_file_path` is `None`, a file named `poesie_francaise.duckdb` is created in the working directory.
 
 The DuckDB database has two tables:
 - `poets`
