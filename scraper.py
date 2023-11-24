@@ -114,178 +114,203 @@ class Scraper:
             f"{'fetch_poets':30s} - Elapsed time (s) : {elapsed_time_s_step:10.3f}"
         )
 
-    def fetch_poems(self, chunk_size=100):
+    def _read_poem_count(self, poet_name, html_content):
+        # Construct the regex pattern with a capturing group for the integer
+        pattern = re.compile(
+            rf"<h2>(?:[^\n\d]*(\d+)\s*-\s*)?Les (\d+) (?:poèmes|fables|(?:poèmes\s+et\s+fables)) d[e']?.*?{re.escape(poet_name)}\s*:</h2>",
+            re.IGNORECASE,
+        )
+
+        # Search for the pattern in the HTML content
+        match = pattern.search(html_content)
+
+        if match:
+            # Extract the integer from the captured group
+            poem_count = int(match.group(2))
+        else:
+            poem_count = 0
+
+        return poem_count
+
+    def _find_next_page_link(self, soup):
+        next_pages_div = soup.find("div", class_="nextpages")
+        if next_pages_div:
+            next_page_link = next_pages_div.find(
+                "a", string=re.compile("suivante", re.IGNORECASE), href=True
+            )
+            if next_page_link:
+                return next_page_link["href"]
+        return None
+
+    def _fetch_poems(self, html_content, poet_slug, if_exists="append"):
+        poet_slugs = []
+        poem_titles = []
+        poet_names = []
+        poem_books = []
+        poem_texts = []
+
+        pattern = rf'<a\s+href="(https://www\.poesie-francaise\.fr/{poet_slug}/(?:poeme|fable)-.*?\.php)"\s*>'
+        matches = re.findall(pattern, html_content)
+        match_count = len(matches)
+
+        # loop on poems from a single poet
+        for _, poem_root_url in enumerate(matches):
+            response = requests.get(poem_root_url)
+            poem_html_content = response.text
+
+            poet_slugs.append(poet_slug)
+
+            # poem title
+            title_pattern = r"<h2>Titre : (.*?)</h2>"
+            title_matches = re.findall(title_pattern, poem_html_content, re.DOTALL)
+            poem_title = title_matches[0].strip()
+            poem_titles.append(poem_title)
+
+            # poet name
+            poet_pattern = r'<h3>Poète : <a href=".*?">(.*?)</a>'
+            poet_matches = re.findall(poet_pattern, poem_html_content, re.DOTALL)
+            poet_name = poet_matches[0].strip()
+            poet_names.append(poet_name)
+
+            # poem book
+            book_pattern = r'Recueil : <a href=".*?">(.*?)</a>'
+            book_matches = re.findall(book_pattern, poem_html_content, re.DOTALL)
+            try:
+                poem_book = book_matches[0].strip()
+            except Exception as _:
+                book_pattern = r'<div class="w3-margin-bottom">Recueil : (.*?).</p>'
+                book_matches = re.findall(book_pattern, poem_html_content, re.DOTALL)
+                poem_book = book_matches[0].strip()
+            self.logger.info(f"{poet_slug}-{poet_name}/{poem_book}/{poem_title}")
+            poem_books.append(poem_book)
+
+            # poem text
+            # ---------
+            poem_pattern = rf'<p>(.*?)</p>\n<a href="https://www.poesie-francaise.fr/poemes-{poet_slug}/">{poet_name}</a>'
+            poem_matches = re.findall(poem_pattern, poem_html_content, re.DOTALL)
+            poem_text = poem_matches[0].strip()
+
+            # Parse the HTML using BeautifulSoup
+            poem_soup = BeautifulSoup(poem_text, "html.parser")
+
+            # Find all <span> elements with class attributes starting with "decalage"
+            spans_to_replace = poem_soup.find_all(
+                "span", class_=re.compile(r"decalage\d+")
+            )
+
+            # Replace each <span> element with the corresponding number of spaces
+            for span in spans_to_replace:
+                # Extract the number of spaces from the class name using regular expression
+                match = re.search(r"decalage(\d+)", span["class"][0])
+
+                if match:
+                    spaces = int(match.group(1))
+                    replacement = poem_soup.new_string(" " * spaces)
+                    span.replace_with(replacement)
+
+            poem_text = str(poem_soup)
+            poem_text = poem_text.replace("<br />", "\n")
+            poem_text = poem_text.replace("<br/>", "\n")
+            poem_text = poem_text.replace(" ;", ";")
+
+            # Replace multiple consecutive blank lines with a single one
+            poem_text = re.sub(r"\n\s*\n", "\n\n", poem_text)
+
+            # Remove remaining HTML tags
+            poem_text = re.sub(r"<.*?>", "", poem_text)
+
+            poem_texts.append(poem_text)
+
+        poems = pd.DataFrame(
+            list(
+                zip(
+                    poet_slugs,
+                    poem_titles,
+                    poet_names,
+                    poem_books,
+                    poem_texts,
+                )
+            ),
+            columns=[
+                "poet_slug",
+                "poem_title",
+                "poet_name",
+                "poem_book",
+                "poem_text",
+            ],
+        )
+        poems.to_sql(name="poems", con=self.engine, if_exists=if_exists, index=False)
+
+        return match_count
+
+    def fetch_poems(self):
         self.logger.info("**** fetch poems ****")
         start_time_step = time.perf_counter()
 
         # init
-        poet_slugs = []
-        poet_names = []
-        poem_books = []
-        poem_titles = []
-        poem_texts = []
         if_exists = "replace"
 
-        sql = "SELECT poet_slug FROM poets"
-        poet_slugs_series = pd.read_sql(sql=sql, con=self.engine).poet_slug
+        # get full list of poets
+        sql = "SELECT poet_slug, poet_name FROM poets"
+        poets = pd.read_sql(sql=sql, con=self.engine)
 
-        # loop on poet slugs
-        poem_count = 0
-        for i, poet_slug in enumerate(poet_slugs_series.values):
-            self.logger.info(f"poet slug : {poet_slug}")
+        # loop on poets
+        for row in poets.itertuples():
+            poet_slug = row.poet_slug
+            poet_name = row.poet_name
+            self.logger.info(f"poet name : '{poet_name}', slug : '{poet_slug}'")
+
+            # fetch html content of first author page
             poet_root_url = self.poem_root_url + poet_slug
             response = requests.get(poet_root_url)
-            poet_html_content = response.text
+            html_content = response.text
 
-            # Parse the HTML using re
-            pattern = rf'<a\s+href="(https://www\.poesie-francaise\.fr/{poet_slug}/(?:poeme|fable)-.*?\.php)"\s*>'
-            matches = re.findall(pattern, poet_html_content)
+            # read number of poems from poet from first author page
+            poem_count = self._read_poem_count(poet_name, html_content)
+            self.logger.info(f"{poem_count} poems")
 
-            # loop on poems
-            for j, poem_root_url in enumerate(matches):
-                poem_count += 1
+            # loop on poet pages
+            url = poet_root_url
+            match_count = 0
+            scanned_urls = []
+            while url and (url not in scanned_urls):
+                scanned_urls.append(url)
 
-                response = requests.get(poem_root_url)
-                poem_html_content = response.text
-
-                poet_slugs.append(poet_slug)
-
-                # poem title
-                # ----------
-
-                title_pattern = r"<h2>Titre : (.*?)</h2>"
-                title_matches = re.findall(title_pattern, poem_html_content, re.DOTALL)
-                if len(title_matches) > 1:
-                    self.logger.error("found more that one title for a single enrty")
-                poem_title = title_matches[0].strip()
-                poem_titles.append(poem_title)
-
-                # poet name
-                # ---------
-
-                poet_pattern = r'<h3>Poète : <a href=".*?">(.*?)</a>'
-                poet_matches = re.findall(poet_pattern, poem_html_content, re.DOTALL)
-                if len(poet_matches) > 1:
-                    self.logger.error(
-                        "found more than one poet name for a single entry"
-                    )
-                poet_name = poet_matches[0].strip()
-                poet_names.append(poem_title)
-
-                # poem book
-                # ---------
-
-                book_pattern = r'Recueil : <a href=".*?">(.*?)</a>'
-                book_matches = re.findall(book_pattern, poem_html_content, re.DOTALL)
-                if len(book_matches) > 1:
-                    self.logger.error("found more than one book for a single entry")
-                try:
-                    poem_book = book_matches[0].strip()
-                except Exception as _:
-                    book_pattern = r'<div class="w3-margin-bottom">Recueil : (.*?).</p>'
-                    book_matches = re.findall(
-                        book_pattern, poem_html_content, re.DOTALL
-                    )
-                    if len(book_matches) > 1:
-                        self.logger.error("found more than one book for a single entry")
-                    poem_book = book_matches[0].strip()
-                self.logger.info(f"{poet_slug}-{poet_name}/{poem_book}/{poem_title}")
-                poem_books.append(poem_book)
-
-                # poem text
-                # ---------
-
-                poem_pattern = rf'<p>(.*?)</p>\n<a href="https://www.poesie-francaise.fr/poemes-{poet_slug}/">{poet_name}</a>'
-                poem_matches = re.findall(poem_pattern, poem_html_content, re.DOTALL)
-                poem_text = poem_matches[0].strip()
-
-                # Parse the HTML using BeautifulSoup
-                poem_soup = BeautifulSoup(poem_text, "html.parser")
-
-                # Find all <span> elements with class attributes starting with "decalage"
-                spans_to_replace = poem_soup.find_all(
-                    "span", class_=re.compile(r"decalage\d+")
+                match_count += self._fetch_poems(
+                    html_content, poet_slug, if_exists=if_exists
                 )
+                if_exists = "append"
 
-                # Replace each <span> element with the corresponding number of spaces
-                for span in spans_to_replace:
-                    # Extract the number of spaces from the class name using regular expression
-                    match = re.search(r"decalage(\d+)", span["class"][0])
+                # Find the link to the next page, if exists
+                soup = BeautifulSoup(html_content, "html.parser")
+                next_page_link = self._find_next_page_link(soup)
+                if next_page_link:
+                    url = next_page_link
+                    response = requests.get(url)
+                    html_content = response.text
+                else:
+                    url = None
 
-                    if match:
-                        spaces = int(match.group(1))
-                        replacement = poem_soup.new_string(" " * spaces)
-                        span.replace_with(replacement)
-
-                poem_text = str(poem_soup)
-                poem_text = poem_text.replace("<br />", "\n")
-                poem_text = poem_text.replace("<br/>", "\n")
-                poem_text = poem_text.replace(" ;", ";")
-
-                # Replace multiple consecutive blank lines with a single one
-                poem_text = re.sub(r"\n\s*\n", "\n\n", poem_text)
-
-                poem_texts.append(poem_text)
-
-                if poem_count % chunk_size == 0:
-                    poems = pd.DataFrame(
-                        list(
-                            zip(
-                                poet_slugs,
-                                poet_names,
-                                poem_books,
-                                poem_titles,
-                                poem_texts,
-                            )
-                        ),
-                        columns=[
-                            "poet_slug",
-                            "poet_name",
-                            "poem_book",
-                            "poem_title",
-                            "poem_text",
-                        ],
-                    )
-                    poems.to_sql(
-                        name="poems", con=self.engine, if_exists=if_exists, index=False
-                    )
-                    poet_slugs = []
-                    poet_names = []
-                    poem_books = []
-                    poem_titles = []
-                    poem_texts = []
-                    if_exists = "append"
-
-        if len(poet_slugs) > 0:
-            poems = pd.DataFrame(
-                list(
-                    zip(
-                        poet_slugs,
-                        poet_names,
-                        poem_books,
-                        poem_titles,
-                        poem_texts,
-                    )
-                ),
-                columns=[
-                    "poet_slug",
-                    "poet_name",
-                    "poem_book",
-                    "poem_title",
-                    "poem_text",
-                ],
-            )
-            poems.to_sql(
-                name="poems", con=self.engine, if_exists=if_exists, index=False
-            )
+            if match_count != poem_count:
+                self.logger.error(
+                    f"poem_count : {poem_count}, match_count : {match_count}"
+                )
+            # assert match_count == poem_count
 
         elapsed_time_s_step = time.perf_counter() - start_time_step
         self.logger.info(
             f"{'fetch_poems':30s} - Elapsed time (s) : {elapsed_time_s_step:10.3f}"
         )
 
+    def fetch_all(self, mode="drop"):
+        if mode == "drop":
+            if os.path.exists(self.duckdb_file_path):
+                os.remove(self.duckdb_file_path)
+
+        self.fetch_poets()
+        self.fetch_poems()
+
 
 if __name__ == "__main__":
     scraper = Scraper()
-    scraper.fetch_poets()
-    scraper.fetch_poems()
+    scraper.fetch_all()
