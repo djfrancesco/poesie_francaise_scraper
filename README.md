@@ -8,7 +8,6 @@ $ pip install requirements.txt
 
 - Run the scraper with:
 
-
 ```bash
 $ python scraper.py
 ```
@@ -22,9 +21,9 @@ scraper.fetch_all()
 
 If `duckdb_file_path` is `None`, a file named `poesie_francaise.duckdb` is created in the current working directory.
 
-The DuckDB database had two tables:
-- poets
-- poems
+The DuckDB database has two tables:
+- `poets`
+- `poems`
 
 ```sql
 D SELECT table_catalog, table_schema, table_name, table_type FROM INFORMATION_SCHEMA.TABLES;
@@ -56,27 +55,6 @@ D SELECT COUNT(*) FROM poems;
 	├──────────────┤
 	│         5873 │
 	└──────────────┘
-
-```sql
-D SELECT * FROM poets LIMIT 10;
-```
-	┌────────────────────────────┬────────────────────────────┬──────────┬──────────┐
-	│         poet_slug          │         poet_name          │ poet_dob │ poet_dod │
-	│          varchar           │          varchar           │ varchar  │ varchar  │
-	├────────────────────────────┼────────────────────────────┼──────────┼──────────┤
-	│ louise-ackermann           │ Louise Ackermann           │ 1813     │ 1890     │
-	│ theodore-agrippa-d-aubigne │ Théodore Agrippa d'Aubigné │ 1552     │ 1630     │
-	│ jean-aicard                │ Jean Aicard                │ 1848     │ 1921     │
-	│ agenor-altaroche           │ Agénor Altaroche           │ 1811     │ 1884     │
-	│ henri-frederic-amiel       │ Henri-Frédéric Amiel       │ 1821     │ 1881     │
-	│ auguste-angellier          │ Auguste Angellier          │ 1848     │ 1911     │
-	│ guillaume-apollinaire      │ Guillaume Apollinaire      │ 1880     │ 1918     │
-	│ louis-aragon               │ Louis Aragon               │ 1897     │ 1982     │
-	│ sophie-d-arbouville        │ Sophie d'Arbouville        │ 1810     │ 1850     │
-	│ antoine-vincent-arnault    │ Antoine-Vincent Arnault    │ 1766     │ 1834     │
-	├────────────────────────────┴────────────────────────────┴──────────┴──────────┤
-	│ 10 rows                                                             4 columns │
-	└───────────────────────────────────────────────────────────────────────────────┘
 
 ```sql
 D SELECT table_name, column_name FROM INFORMATION_SCHEMA.COLUMNS;
