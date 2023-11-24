@@ -9,6 +9,7 @@ from loguru import logger
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from slugify import slugify
 from sqlalchemy import create_engine
 
 
@@ -145,6 +146,7 @@ class Scraper:
     def _fetch_poems(self, html_content, poet_slug, if_exists="append"):
         poet_slugs = []
         poem_titles = []
+        poem_slugs = []
         poet_names = []
         poem_books = []
         poem_texts = []
@@ -165,6 +167,10 @@ class Scraper:
             title_matches = re.findall(title_pattern, poem_html_content, re.DOTALL)
             poem_title = title_matches[0].strip()
             poem_titles.append(poem_title)
+
+            # poem slugs
+            poem_slug = slugify(poem_title)
+            poem_slugs.append(poem_slug)
 
             # poet name
             poet_pattern = r'<h3>Poète : <a href=".*?">(.*?)</a>'
@@ -226,6 +232,7 @@ class Scraper:
                 zip(
                     poet_slugs,
                     poem_titles,
+                    poem_slugs,
                     poet_names,
                     poem_books,
                     poem_texts,
@@ -234,6 +241,7 @@ class Scraper:
             columns=[
                 "poet_slug",
                 "poem_title",
+                "poem_slugs",
                 "poet_name",
                 "poem_book",
                 "poem_text",
