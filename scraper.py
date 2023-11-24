@@ -334,7 +334,7 @@ class Scraper:
             columns=[
                 "poet_slug",
                 "poem_title",
-                "poem_slugs",
+                "poem_slug",
                 "poet_name",
                 "poem_book",
                 "poem_text",
